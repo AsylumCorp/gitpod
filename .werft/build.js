@@ -15,7 +15,7 @@ build(context, version)
 function parseVersion(context) {
     let buildConfig = context.Annotations || {};
     const explicitVersion = buildConfig.version;
-    if(explicitVersion) {
+    if (explicitVersion) {
         return explicitVersion;
     }
     let version = context.Name;
@@ -63,28 +63,28 @@ async function build(context, version) {
         "HTTPS_PROXY": "http://dev-http-cache:3129",
     };
     let tfPromise = validateTerraform();
+
     exec(`leeway vet --ignore-warnings`);
-    exec(`leeway build --werft=true -c ${cacheLevel} ${dontTest ? '--dont-test':''} -Dversion=${version} -DimageRepoBase=eu.gcr.io/gitpod-core-dev/dev dev:all`, buildEnv);
-    exec(`leeway build --werft=true -c ${cacheLevel} ${dontTest ? '--dont-test':''} -Dversion=${version} -DremoveSources=false -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build`, buildEnv);
-    await Promise.all(tfPromise);
-    if(publishRelease) {
+    exec(`leeway build --werft=true -c ${cacheLevel} ${dontTest ? '--dont-test' : ''} -Dversion=${version} -DimageRepoBase=eu.gcr.io/gitpod-core-dev/dev dev:all`, buildEnv);
+    exec(`leeway build --werft=true -c ${cacheLevel} ${dontTest ? '--dont-test' : ''} -Dversion=${version} -DremoveSources=false -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build`, buildEnv);
+    if (publishRelease) {
         exec(`gcloud auth activate-service-account --key-file "/mnt/secrets/gcp-sa-release/service-account.json"`);
         exec(`leeway build --werft=true -Dversion=${version} -DremoveSources=false -DimageRepoBase=eu.gcr.io/gitpod-io/self-hosted`, buildEnv);
         publishHelmChart("eu.gcr.io/gitpod-io/self-hosted")
         exec(`gcloud auth activate-service-account --key-file "${GCLOUD_SERVICE_ACCOUNT_PATH}"`);
     }
-  
+
     // gitTag(`build/${version}`);
 
     // if (masterBuild) {
-        /**
-         * Deploy master
-         * 
-         * [cw] we don't have a core-staging environment (yet)
-         */
-        // exec(`git config --global user.name "${context.Owner}"`);
-        // exec(`werft run --follow-with-prefix=deploy --remote-job-path .werft/deploy-staging.yaml -a version=${version} github`);
-        // return;
+    /**
+     * Deploy master
+     * 
+     * [cw] we don't have a core-staging environment (yet)
+     */
+    // exec(`git config --global user.name "${context.Owner}"`);
+    // exec(`werft run --follow-with-prefix=deploy --remote-job-path .werft/deploy-staging.yaml -a version=${version} github`);
+    // return;
     // }
 
     if ("no-preview" in buildConfig) {
@@ -93,29 +93,30 @@ async function build(context, version) {
     } else {
         await deployToDev(version);
     }
+    await tfPromise;
 }
 
 async function validateTerraform() {
-  var terraformScripts = [
-    "aws-full-terraform",
-    "aws-terraform",
-    "gcp-full-terraform",
-    "gcp-terraform"
-  ];
-  for (var i of terraformScripts) {
-    try {
-      werft.log(`install/${i}`, "\x1b[1;34mInitializing\x1b[m");
-      await exec(`cd install/${i} && terraform init -backend=false`, { slice: `install/${i}`, async: true });
-      werft.log(`install/${i}`, "\x1b[1;34mCheck Style\x1b[m");
-      await exec(`cd install/${i} && terraform fmt -recursive -check`, { slice: `install/${i}`, async: true });
-      werft.log(`install/${i}`, "\x1b[1;34mValidating\x1b[m");
-      await exec(`cd install/${i} && terraform validate`, { slice: `install/${i}`, async: true });
-      werft.done(`install/${i}`);
-    }
-    catch (err) {
-      werft.fail(`install/${i}`, err);
-    }
-  }
+    var terraformScripts = [
+        "aws-full-terraform",
+        "aws-terraform",
+        "gcp-full-terraform",
+        "gcp-terraform"
+    ];
+
+    await Promise.all(terraformScripts.map(async (i) => {
+        try {
+            werft.log(`install/${i}`, "\x1b[1;34mInitializing\x1b[m");
+            await exec(`cd install/${i} && terraform init -backend=false`, { slice: `install/${i}`, async: true });
+            werft.log(`install/${i}`, "\x1b[1;34mCheck Style\x1b[m");
+            await exec(`cd install/${i} && terraform fmt -recursive -check`, { slice: `install/${i}`, async: true });
+            werft.log(`install/${i}`, "\x1b[1;34mValidating\x1b[m");
+            await exec(`cd install/${i} && terraform validate`, { slice: `install/${i}`, async: true });
+            werft.done(`install/${i}`);
+        } catch (err) {
+            werft.fail(`install/${i}`, err);
+        }
+    }));
 }
 
 /**
@@ -127,16 +128,16 @@ async function deployToDev(version) {
     const namespace = `staging-${destname}`;
     const domain = `${destname}.staging.gitpod-dev.com`;
     const url = `http://${domain}`;
-    const wssyncPort = `1${Math.floor(Math.random()*1000)}`;
-    const wsmanNodePort = `2${Math.floor(Math.random()*1000)}`;
-    const registryNodePort = `${30000 + Math.floor(Math.random()*1000)}`;
+    const wssyncPort = `1${Math.floor(Math.random() * 1000)}`;
+    const wsmanNodePort = `2${Math.floor(Math.random() * 1000)}`;
+    const registryNodePort = `${30000 + Math.floor(Math.random() * 1000)}`;
 
     try {
-        recreateNamespace(namespace, {slice: 'prep'});
+        recreateNamespace(namespace, { slice: 'prep' });
         [
             "kubectl config current-context",
             `kubectl config set-context --current --namespace=${namespace}`
-        ].forEach(cmd => exec(cmd, {slice: 'prep'}));
+        ].forEach(cmd => exec(cmd, { slice: 'prep' }));
         werft.done('prep');
     } catch (err) {
         werft.fail('prep', err);
@@ -146,9 +147,9 @@ async function deployToDev(version) {
     try {
         const auth = exec(`echo -n "_json_key:$(kubectl get secret gcp-sa-registry-auth --namespace=keys --export -o yaml \
                         | yq r - data['.dockerconfigjson'] \
-                        | base64 -d)" | base64 -w 0`, {silent: true}).stdout.trim();
+                        | base64 -d)" | base64 -w 0`, { silent: true }).stdout.trim();
         fs.writeFileSync("chart/gcp-sa-registry-auth",
-`{
+            `{
     "auths": {
         "eu.gcr.io": {
             "auth": "${auth}"
@@ -165,7 +166,7 @@ async function deployToDev(version) {
         exec(`kubectl get secret preview-envs-authproviders --namespace=keys --export -o yaml \
                 | yq r - data.authProviders \
                 | base64 -d -w 0 \
-                > authProviders`, {silent: true}).stdout.trim();
+                > authProviders`, { silent: true }).stdout.trim();
         exec(`yq merge --inplace .werft/values.dev.yaml ./authProviders`)
         werft.done('authProviders');
     } catch (err) {
@@ -178,11 +179,11 @@ async function deployToDev(version) {
 
     werft.log("predeploy cleanup", "removing old unnamespaced objects - this might take a while");
     try {
-        exec(`/usr/local/bin/helm3 delete gitpod-${destname} || echo gitpod-${destname} was not installed yet`, {slice: 'predeploy cleanup'});
-        exec(`/usr/local/bin/helm3 delete jaeger-${destname} || echo jaeger-${destname} was not installed yet`, {slice: 'predeploy cleanup'});
+        exec(`/usr/local/bin/helm3 delete gitpod-${destname} || echo gitpod-${destname} was not installed yet`, { slice: 'predeploy cleanup' });
+        exec(`/usr/local/bin/helm3 delete jaeger-${destname} || echo jaeger-${destname} was not installed yet`, { slice: 'predeploy cleanup' });
 
         let objs = [];
-        ["ws-scheduler", "node-daemon", "cluster", "workspace", "jaeger", "jaeger-agent", "ws-sync", "ws-manager-node"].forEach(comp => 
+        ["ws-scheduler", "node-daemon", "cluster", "workspace", "jaeger", "jaeger-agent", "ws-sync", "ws-manager-node"].forEach(comp =>
             ["ClusterRole", "ClusterRoleBinding", "PodSecurityPolicy"].forEach(kind =>
                 shell
                     .exec(`kubectl get ${kind} -l component=${comp} --no-headers -o=custom-columns=:metadata.name | grep ${namespace}-ns`)
@@ -195,7 +196,7 @@ async function deployToDev(version) {
 
         objs.forEach(o => {
             werft.log("predeploy cleanup", `deleting old ${o.kind} ${o.obj}`);
-            exec(`kubectl delete ${o.kind} ${o.obj}`, {slice: 'predeploy cleanup'});
+            exec(`kubectl delete ${o.kind} ${o.obj}`, { slice: 'predeploy cleanup' });
         });
         werft.done('predeploy cleanup');
     } catch (err) {
@@ -212,24 +213,24 @@ async function deployToDev(version) {
     }
 
     let flags = "";
-    flags+=` --namespace ${namespace}`;
-    flags+=` --set components.imageBuilder.hostDindData=/mnt/disks/ssd0/docker-${namespace}`;
-    flags+=` --set version=${version}`;
-    flags+=` --set hostname=${domain}`;
-    flags+=` --set devBranch=${destname}`;
-    flags+=` --set components.wsSync.servicePort=${wssyncPort}`;
-    flags+=` --set components.wsManagerNode.registryProxyPort=${wsmanNodePort}`;
-    flags+=` --set ingressMode=${context.Annotations.ingressMode || "hosts"}`;
+    flags += ` --namespace ${namespace}`;
+    flags += ` --set components.imageBuilder.hostDindData=/mnt/disks/ssd0/docker-${namespace}`;
+    flags += ` --set version=${version}`;
+    flags += ` --set hostname=${domain}`;
+    flags += ` --set devBranch=${destname}`;
+    flags += ` --set components.wsSync.servicePort=${wssyncPort}`;
+    flags += ` --set components.wsManagerNode.registryProxyPort=${wsmanNodePort}`;
+    flags += ` --set ingressMode=${context.Annotations.ingressMode || "hosts"}`;
     const pathToVersions = `${shell.pwd().toString()}/versions.yaml`;
     if (fs.existsSync(pathToVersions)) {
-        flags+=` -f ${pathToVersions}`;
+        flags += ` -f ${pathToVersions}`;
     } else {
         werft.log(`versions file not found at '${pathToVersions}', not using it.`);
     }
     try {
         shell.cd("chart");
         werft.log('helm', 'installing Gitpod');
-        
+
         exec(`helm dependencies up`);
         exec(`/usr/local/bin/helm3 upgrade --install --timeout 10m -f ../.werft/values.dev.yaml ${flags} gitpod .`);
 
@@ -266,7 +267,7 @@ async function issueAndInstallCertficate(namespace, domain) {
             -var 'namespace=${namespace}' \
             -var 'dns_zone_domain=gitpod-dev.com' \
             -var 'domain=${domain}' \
-            -var 'subdomains=["", "*.", "*.ws-dev."]'`, {slice: 'certificate', async: true});
+            -var 'subdomains=["", "*.", "*.ws-dev."]'`, { slice: 'certificate', async: true });
 
     werft.log('certificate', `waiting until certificate certs/${namespace} is ready...`)
     let notReadyYet = true;
@@ -304,7 +305,7 @@ async function publishHelmChart(imageRepoBase) {
         "helm3 repo index --merge old-index.yaml helm-repo",
         "gsutil -m rsync -r helm-repo/ gs://charts-gitpod-io-public/"
     ].forEach(cmd => {
-        exec(cmd, {slice: 'publish-charts'});
+        exec(cmd, { slice: 'publish-charts' });
     });
 }
 

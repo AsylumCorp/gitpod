@@ -62,10 +62,11 @@ async function build(context, version) {
         "HTTP_PROXY": "http://dev-http-cache:3129",
         "HTTPS_PROXY": "http://dev-http-cache:3129",
     };
-    validateTerraform();
+    let tfPromise = validateTerraform();
     exec(`leeway vet --ignore-warnings`);
     exec(`leeway build --werft=true -c ${cacheLevel} ${dontTest ? '--dont-test':''} -Dversion=${version} -DimageRepoBase=eu.gcr.io/gitpod-core-dev/dev dev:all`, buildEnv);
     exec(`leeway build --werft=true -c ${cacheLevel} ${dontTest ? '--dont-test':''} -Dversion=${version} -DremoveSources=false -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build`, buildEnv);
+    await Promise.all(tfPromise);
     if(publishRelease) {
         exec(`gcloud auth activate-service-account --key-file "/mnt/secrets/gcp-sa-release/service-account.json"`);
         exec(`leeway build --werft=true -Dversion=${version} -DremoveSources=false -DimageRepoBase=eu.gcr.io/gitpod-io/self-hosted`, buildEnv);
@@ -94,8 +95,7 @@ async function build(context, version) {
     }
 }
 
-
-function validateTerraform() {
+async function validateTerraform() {
   var terraformScripts = [
     "aws-full-terraform",
     "aws-terraform",
@@ -105,11 +105,11 @@ function validateTerraform() {
   for (var i of terraformScripts) {
     try {
       werft.log(`install/${i}`, "\x1b[1;34mInitializing\x1b[m");
-      exec(`cd install/${i} && terraform init -backend=false`, { slice: `install/${i}` });
+      await exec(`cd install/${i} && terraform init -backend=false`, { slice: `install/${i}`, async: true });
       werft.log(`install/${i}`, "\x1b[1;34mCheck Style\x1b[m");
-      exec(`cd install/${i} && terraform fmt -recursive -check`, { slice: `install/${i}` });
+      await exec(`cd install/${i} && terraform fmt -recursive -check`, { slice: `install/${i}`, async: true });
       werft.log(`install/${i}`, "\x1b[1;34mValidating\x1b[m");
-      exec(`cd install/${i} && terraform validate`, { slice: `install/${i}` });
+      await exec(`cd install/${i} && terraform validate`, { slice: `install/${i}`, async: true });
       werft.done(`install/${i}`);
     }
     catch (err) {

@@ -62,6 +62,7 @@ async function build(context, version) {
         "HTTP_PROXY": "http://dev-http-cache:3129",
         "HTTPS_PROXY": "http://dev-http-cache:3129",
     };
+    validateTerraform();
     exec(`leeway vet --ignore-warnings`);
     exec(`leeway build --werft=true -c ${cacheLevel} ${dontTest ? '--dont-test':''} -Dversion=${version} -DimageRepoBase=eu.gcr.io/gitpod-core-dev/dev dev:all`, buildEnv);
     exec(`leeway build --werft=true -c ${cacheLevel} ${dontTest ? '--dont-test':''} -Dversion=${version} -DremoveSources=false -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build`, buildEnv);
@@ -71,6 +72,7 @@ async function build(context, version) {
         publishHelmChart("eu.gcr.io/gitpod-io/self-hosted")
         exec(`gcloud auth activate-service-account --key-file "${GCLOUD_SERVICE_ACCOUNT_PATH}"`);
     }
+  
     // gitTag(`build/${version}`);
 
     // if (masterBuild) {
@@ -92,6 +94,29 @@ async function build(context, version) {
     }
 }
 
+
+function validateTerraform() {
+  var terraformScripts = [
+    "aws-full-terraform",
+    "aws-terraform",
+    "gcp-full-terraform",
+    "gcp-terraform"
+  ];
+  for (var i of terraformScripts) {
+    try {
+      werft.log(`install/${i}`, "\x1b[1;34mInitializing\x1b[m");
+      exec(`cd install/${i} && terraform init -backend=false`, { slice: `install/${i}` });
+      werft.log(`install/${i}`, "\x1b[1;34mCheck Style\x1b[m");
+      exec(`cd install/${i} && terraform fmt -recursive -check`, { slice: `install/${i}` });
+      werft.log(`install/${i}`, "\x1b[1;34mValidating\x1b[m");
+      exec(`cd install/${i} && terraform validate`, { slice: `install/${i}` });
+      werft.done(`install/${i}`);
+    }
+    catch (err) {
+      werft.fail(`install/${i}`, err);
+    }
+  }
+}
 
 /**
  * Deploy dev
